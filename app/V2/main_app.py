@@ -156,8 +156,8 @@ class CharacterDetection():
       
             for btn in buttons:
                 cls_btn = int(btn.cls[0])
-                #conf_btn = float(btn.conf[0])
-                #print(f"Detected class={cls_btn}, conf={conf_btn:.3f}")
+                conf_btn = float(btn.conf[0])
+                print(f"Detected class={cls_btn}, conf={conf_btn:.3f}")
                 if cls_btn == 1 :
                     x1, y1, x2, y2 = map(int,btn.xyxy[0])
                     center["x"], center["y"] =  (x1 + x2)//2,(y1+y2)//2
@@ -166,7 +166,7 @@ class CharacterDetection():
                         pyautogui.click(center["x"],center["y"])        
                         time.sleep(0.2) 
     
-    def verify_target_match(self,cropped_5star_img: np.ndarray, threshold:float = 0.6) -> bool:
+    def verify_target_match(self,cropped_5star_img: np.ndarray, threshold:float = 0.7) -> bool:
         cropped_gray = cv2.cvtColor(cropped_5star_img, cv2.COLOR_BGR2GRAY)
 
         for name,template_gray in self.template_gray:
@@ -248,5 +248,5 @@ if __name__ == "__main__":
     DELAY_AFTER_PULL_SEQUENCE = 0.5 
     DELAY_BEFORE_RETRY = 0.2
     
-    bot = CharacterDetection(CHAR_MODEL_PATH,UI_MODEL_PATH,["blade1"],'f9','esc')
+    bot = CharacterDetection(CHAR_MODEL_PATH,UI_MODEL_PATH,["luvencia"],'f9','esc')
     bot.start_reroll()
