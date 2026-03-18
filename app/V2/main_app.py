@@ -33,6 +33,7 @@ class CharacterDetection():
             print(f"Model loaded successfully!")
         except Exception as e:
             print(f"Error Loading Model {e}")
+            exit()
         
         
         # Get target characters images
@@ -45,10 +46,15 @@ class CharacterDetection():
         
         self.template_gray: list[tuple[str,MatLike]] = []
         for char_path in character_image_paths:
-            img = cv2.imread(char_path)
-    
+            try:
+                img = cv2.imread(char_path)
+            except Exception as e:
+                print(f"Failed to get the image: {char_path}")
+                exit()
+                
             if img is None:
-                raise ValueError(f"Failed to get the image: {char_path}")
+                print(f"Failed to get the image: {char_path}")
+                exit()
             
             print(f"Successfully Loaded {char_path}")
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -139,7 +145,7 @@ class CharacterDetection():
         frame = np.array(screenshot)
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         #cv2.imwrite("debug_skip_frame.png", frame)
-        results:list[Results]  = cast(list[Results],self.ui_model(frame, conf=0.1,verbose=False))
+        results:list[Results]  = cast(list[Results],self.ui_model(frame, conf=0.3,verbose=False))
         center: CenterPosition = {"x":0,"y":0}
         for r in results:
             buttons = r.boxes
@@ -150,8 +156,8 @@ class CharacterDetection():
       
             for btn in buttons:
                 cls_btn = int(btn.cls[0])
-                conf_btn = float(btn.conf[0])
-                print(f"Detected class={cls_btn}, conf={conf_btn:.3f}")
+                #conf_btn = float(btn.conf[0])
+                #print(f"Detected class={cls_btn}, conf={conf_btn:.3f}")
                 if cls_btn == 1 :
                     x1, y1, x2, y2 = map(int,btn.xyxy[0])
                     center["x"], center["y"] =  (x1 + x2)//2,(y1+y2)//2
@@ -214,7 +220,7 @@ class CharacterDetection():
         
                     # Stop Condition
                     if condition_met:
-                        print("*** Target Founded ****")
+                        print("*** Targets Founded ****")
                         self.script_active = False
                         print("--- Script Stopped ---")
                         sound_file = "public/sound/tuturu.wav"
@@ -237,8 +243,8 @@ class CharacterDetection():
                 
 if __name__ == "__main__":
     CHAR_MODEL_PATH = 'model/train/runs/detect/char/train/weights/best.pt'
-    UI_MODEL_PATH = 'model/train/runs/detect/ui/train2/weights/best.pt'
-    DELAY_AFTER_CLICK = 0.5
+    UI_MODEL_PATH = 'model/train/runs/detect/ui/train/weights/best.pt'
+    DELAY_AFTER_CLICK = 0.65
     DELAY_AFTER_PULL_SEQUENCE = 0.5 
     DELAY_BEFORE_RETRY = 0.2
     
