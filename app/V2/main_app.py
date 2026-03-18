@@ -8,13 +8,20 @@ import cv2
 from cv2.typing import MatLike
 import numpy as np 
 from ultralytics import YOLO 
-from typing import cast
+from typing import cast, TypedDict
 from ultralytics.engine.results import Results
+
+
+
+class CenterPosition(TypedDict):
+    x:int
+    y:int
 
 
 class CharacterDetection():
     
-    def __init__(self,char_model_path:str,ui_model_path:str,characters:list[str],toggle_key:str,stop_key:str):
+    #--- Constructor -----
+    def __init__(self, char_model_path:str, ui_model_path:str, characters:list[str], toggle_key:str, stop_key:str):
         print(f"Loading Model...")
         # Script State
         self.script_alive: bool = True
@@ -43,11 +50,13 @@ class CharacterDetection():
             img = cv2.imread(char_path)
     
             if img is None:
-                raise ValueError(f"โหลดภาพไม่ได้: {char_path}")
-    
+                raise ValueError(f"Failed to get the image: {char_path}")
+            print(f"Successfully Loaded {char_path}")
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             self.template_gray.append(gray)
-     
+    #--------------------------------------------------------------
+    
+    
     # Script State Control    
     def exit_script(self) -> None :
         self.script_active = False
@@ -79,8 +88,8 @@ class CharacterDetection():
     #--------------------
     
        
-    #  Screen detection
-    def detecting_character(self) -> list[np.ndarray] | None:
+    #  Get object screenshot 
+    def char_detecting(self) :
         screenshot = pyautogui.screenshot()
         frame = np.array(screenshot)
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
@@ -99,37 +108,45 @@ class CharacterDetection():
         print(f"Finished Scan found {len(found_character)} 5-star characters")
         return found_character
     
-    """ def detecting_ui(self):
+    def ui_detecting(self,target_btn:str) -> None:
         screenshot = pyautogui.screenshot()
         frame = np.array(screenshot)
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        results:list[Results]  = self.char_model(frame, conf=0.8,verbose=False)
+        results:list[Results]  = cast(list[Results],self.ui_model(frame, conf=0.8,verbose=False))
+        center: CenterPosition = {"x":0,"y":0}
         for r in results:
             buttons = r.boxes
-            #draw_again = 0, skip = 1
+            if buttons == None:
+                print("Buttons not found")
+                break
+            
+            # Classes : draw_again = 0, skip = 1
             for btn in buttons:
                 cls_btn = int(btn.cls[0])
-                if cls_btn == 0:
-                    x1, y1, x2, y2 = map(int,btn.xyxy) """
-            
-    
-    def verify_character(self,cropped_5star_img: np.ndarray, threshold:float = 0.6) -> bool:
+                if cls_btn == 0 and target_btn == "redraw":
+                    x1, y1, x2, y2 = map(int,btn.xyxy)
+                    center["x"], center["y"] =  (x1 + x2)//2,(y1+y2)//2
+                    print(f"Redraw button found at {center["x"], center["y"]}")
+                    pyautogui.click(center["x"],center["y"])         
+                elif cls_btn == 1 and target_btn == "skip":
+                    x1, y1, x2, y2 = map(int,btn.xyxy)
+                    center["x"], center["y"] =  (x1 + x2)//2,(y1+y2)//2
+                    print(f"Skip button found at {center["x"], center["y"]}")
+                    pyautogui.click(center["x"],center["y"])        
 
-     
+    
+    def verify_target_match(self,cropped_5star_img: np.ndarray, threshold:float = 0.6) -> bool:
         cropped_gray = cv2.cvtColor(cropped_5star_img, cv2.COLOR_BGR2GRAY)
 
         for template_gray in self.template_gray:
-            print(f"Now checking : {template_gray} with {cropped_gray}")
             h_temp, w_temp = template_gray.shape
             h_crop, w_crop = cropped_gray.shape
-            
+                
             if h_temp > h_crop or w_temp > w_crop:
                 print("Template picture is too big ")
                 return False
-
             result = cv2.matchTemplate(cropped_gray, template_gray, cv2.TM_CCOEFF_NORMED)
-
-            _min_val, max_val, _min_loc, _max_loc = cv2.minMaxLoc(result)
+            _, max_val, _, _ = cv2.minMaxLoc(result)
 
             if max_val >= threshold:
                 print(f"Found With : {max_val*100:.2f}%")
@@ -141,36 +158,47 @@ class CharacterDetection():
     def start_reroll(self):  
         try:  
             while self.script_alive:
-                condition_met: bool = False
-                if self.script_active:                
-                    character_images:list[np.ndarray] | None = self.detecting_character()
+                if self.script_active: 
+                    condition_met: bool = False
+                    # UI DETECT    
+                    self.ui_detecting("redraw")
+                    time.sleep(DELAY_AFTER_CLICK)
+                    pydirectinput.press('enter')            # type: ignore
+                    time.sleep(DELAY_AFTER_CLICK)
+                    for _ in range(4): 
+                        self.ui_detecting("skip")
+                        time.sleep(0.2)
+                    time.sleep(DELAY_AFTER_PULL_SEQUENCE)
+                    #---------
+                    
+                    character_images:list[np.ndarray] | None = self.char_detecting()
                     if character_images == None:
-                        return #do some thing
+                        time.sleep(0.5)
+                        continue
                     
                     target_found: int = 0
                     for c in character_images:
-                        print("Before char check")
-                        target_char_check = self.verify_character(c)
-                        print(f"After char check {target_char_check}")
+                        target_char_check = self.verify_target_match(c)
                         if target_char_check:
                             target_found += 1
                             print(f"Found {target_found} target now")
                             if target_found == self.chars_need:
                                 condition_met = True
                                 break
-                    self.script_active = False
-                    break
-                # Stop Condition
-                if condition_met:
-                    print("*** Target Founded ****")
-                    self.script_active = False
-                    print("--- Script Stopped ---")
-                    sound_file = "public/sound/tuturu.wav"
-                    try:
-                        winsound.PlaySound(sound_file, winsound.SND_FILENAME)
-                    except Exception as e_sound:
-                        print(f"Error playing sound: {e_sound},{sound_file}")
-                        winsound.Beep(1000, 500)
+        
+                    # Stop Condition
+                    if condition_met:
+                        print("*** Target Founded ****")
+                        self.script_active = False
+                        print("--- Script Stopped ---")
+                        sound_file = "public/sound/tuturu.wav"
+                        try:
+                            winsound.PlaySound(sound_file, winsound.SND_FILENAME)
+                        except Exception as e_sound:
+                            print(f"Error playing sound: {e_sound},{sound_file}")
+                            winsound.Beep(1000, 500)
+                    else:
+                        time.sleep(DELAY_BEFORE_RETRY)
                 time.sleep(0.1)
         except KeyboardInterrupt: 
             print("\n--- Script interrupted by user (Ctrl+C). Exiting. ---")
@@ -184,6 +212,9 @@ class CharacterDetection():
 if __name__ == "__main__":
     CHAR_MODEL_PATH = 'model/train/runs/detect/char/train/weights/best.pt'
     UI_MODEL_PATH = 'model/train/runs/detect/ui/train2/weights/best.pt'
-
-    bot = CharacterDetection(CHAR_MODEL_PATH,UI_MODEL_PATH,["rafina3","alec"],'f9','esc')
+    DELAY_AFTER_CLICK = 0.5
+    DELAY_AFTER_PULL_SEQUENCE = 0.5 
+    DELAY_BEFORE_RETRY = 0.2
+    
+    bot = CharacterDetection(CHAR_MODEL_PATH,UI_MODEL_PATH,["blade1","alec"],'f9','esc')
     bot.start_reroll()
