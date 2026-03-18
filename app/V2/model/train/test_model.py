@@ -1,7 +1,7 @@
 from ultralytics import YOLO # type: ignore
 
 def main():
-    model = YOLO(r'runs\detect\ui\train2\weights\best.pt')
+    model = YOLO(r'runs\detect\ui\train\weights\best.pt')
 
     print("Starting Model Evaluation on TEST dataset...")
     metrics = model.val(

@@ -43,7 +43,7 @@ class CharacterDetection():
         # Convert Images to BGR2GRAY
         self.chars_need = len(character_image_paths)
         
-        self.template_gray: list[MatLike] = []
+        self.template_gray: list[tuple[str,MatLike]] = []
         for char_path in character_image_paths:
             img = cv2.imread(char_path)
     
@@ -56,7 +56,7 @@ class CharacterDetection():
             scales = [0.5, 0.7, 0.85, 1.0]
             for scale in scales:
                 resized = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-                self.template_gray.append(resized)
+                self.template_gray.append((char_path,resized))
        
         # Register hotkeys
         self.register_hotkeys(toggle_key,stop_key)
@@ -126,7 +126,6 @@ class CharacterDetection():
                 print("Redraw Buttons not found")
                 break
             
-            # Classes : draw_again = 0, skip = 1
             for btn in buttons:
                 cls_btn = int(btn.cls[0])
                 if cls_btn == 0:
@@ -140,7 +139,7 @@ class CharacterDetection():
         frame = np.array(screenshot)
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         #cv2.imwrite("debug_skip_frame.png", frame)
-        results:list[Results]  = cast(list[Results],self.ui_model(frame, conf=0.5,verbose=False))
+        results:list[Results]  = cast(list[Results],self.ui_model(frame, conf=0.1,verbose=False))
         center: CenterPosition = {"x":0,"y":0}
         for r in results:
             buttons = r.boxes
@@ -148,11 +147,11 @@ class CharacterDetection():
                 print("Skip Buttons not found")
                 break
             
-            # Classes : draw_again = 0, skip = 1
+      
             for btn in buttons:
                 cls_btn = int(btn.cls[0])
-                #conf_btn = float(btn.conf[0])
-                #print(f"Detected class={cls_btn}, conf={conf_btn:.3f}")
+                conf_btn = float(btn.conf[0])
+                print(f"Detected class={cls_btn}, conf={conf_btn:.3f}")
                 if cls_btn == 1 :
                     x1, y1, x2, y2 = map(int,btn.xyxy[0])
                     center["x"], center["y"] =  (x1 + x2)//2,(y1+y2)//2
@@ -164,7 +163,7 @@ class CharacterDetection():
     def verify_target_match(self,cropped_5star_img: np.ndarray, threshold:float = 0.6) -> bool:
         cropped_gray = cv2.cvtColor(cropped_5star_img, cv2.COLOR_BGR2GRAY)
 
-        for template_gray in self.template_gray:
+        for name,template_gray in self.template_gray:
             h_temp, w_temp = template_gray.shape
             h_crop, w_crop = cropped_gray.shape
                 
@@ -175,10 +174,10 @@ class CharacterDetection():
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
             if max_val >= threshold:
-                print(f"Found With : {max_val*100:.2f}%")
+                print(f"Found {name} : {max_val*100:.2f}%")
                 return True
             else:
-                print(f"Not Found Max confidense: {max_val*100:.2f}%")
+                print(f"Not Found {name}: {max_val*100:.2f}%")
         return False      
         
     def start_reroll(self):  
@@ -198,6 +197,7 @@ class CharacterDetection():
                     
                     character_images:list[np.ndarray]  = self.char_detecting()
                     if len(character_images) == 0:
+                        print("No characters found")
                         print("Starting Skip detect")
                         self.skip_click()
                         continue
@@ -242,5 +242,5 @@ if __name__ == "__main__":
     DELAY_AFTER_PULL_SEQUENCE = 0.5 
     DELAY_BEFORE_RETRY = 0.2
     
-    bot = CharacterDetection(CHAR_MODEL_PATH,UI_MODEL_PATH,["blade1","alec"],'f9','esc')
+    bot = CharacterDetection(CHAR_MODEL_PATH,UI_MODEL_PATH,["blade1"],'f9','esc')
     bot.start_reroll()
