@@ -34,8 +34,6 @@ class CharacterDetection():
         except Exception as e:
             print(f"Error Loading Model {e}")
         
-        # Register hotkeys
-        self.register_hotkeys(toggle_key,stop_key)
         
         # Get target characters images
         base_path = 'public/characters/'
@@ -51,9 +49,17 @@ class CharacterDetection():
     
             if img is None:
                 raise ValueError(f"Failed to get the image: {char_path}")
+            
             print(f"Successfully Loaded {char_path}")
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            self.template_gray.append(gray)
+            #Rescale
+            scales = [0.5, 0.7, 0.85, 1.0]
+            for scale in scales:
+                resized = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+                self.template_gray.append(resized)
+       
+        # Register hotkeys
+        self.register_hotkeys(toggle_key,stop_key)
     #--------------------------------------------------------------
     
     
@@ -89,7 +95,7 @@ class CharacterDetection():
     
        
     #  Get object screenshot 
-    def char_detecting(self) :
+    def char_detecting(self)-> list[np.ndarray] :
         screenshot = pyautogui.screenshot()
         frame = np.array(screenshot)
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
@@ -97,8 +103,8 @@ class CharacterDetection():
         found_character: list[np.ndarray] = []
         for r in results:
             slots = r.boxes
-            if slots == None:
-                return None    
+            if slots is None:
+                return found_character    
             for slot in slots:
                 cls_id = int(slot.cls[0])
                 if cls_id == 0: 
@@ -108,7 +114,7 @@ class CharacterDetection():
         print(f"Finished Scan found {len(found_character)} 5-star characters")
         return found_character
     
-    def ui_detecting(self,target_btn:str) -> None:
+    def redraw_click(self) -> None:
         screenshot = pyautogui.screenshot()
         frame = np.array(screenshot)
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
@@ -116,24 +122,44 @@ class CharacterDetection():
         center: CenterPosition = {"x":0,"y":0}
         for r in results:
             buttons = r.boxes
-            if buttons == None:
-                print("Buttons not found")
+            if buttons is None or  len(buttons) == 0:
+                print("Redraw Buttons not found")
                 break
             
             # Classes : draw_again = 0, skip = 1
             for btn in buttons:
                 cls_btn = int(btn.cls[0])
-                if cls_btn == 0 and target_btn == "redraw":
-                    x1, y1, x2, y2 = map(int,btn.xyxy)
+                if cls_btn == 0:
+                    x1, y1, x2, y2 = map(int,btn.xyxy[0])
                     center["x"], center["y"] =  (x1 + x2)//2,(y1+y2)//2
                     print(f"Redraw button found at {center["x"], center["y"]}")
-                    pyautogui.click(center["x"],center["y"])         
-                elif cls_btn == 1 and target_btn == "skip":
-                    x1, y1, x2, y2 = map(int,btn.xyxy)
+                    pyautogui.click(center["x"],center["y"])
+             
+    def skip_click(self) ->None:
+        screenshot = pyautogui.screenshot()
+        frame = np.array(screenshot)
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        #cv2.imwrite("debug_skip_frame.png", frame)
+        results:list[Results]  = cast(list[Results],self.ui_model(frame, conf=0.5,verbose=False))
+        center: CenterPosition = {"x":0,"y":0}
+        for r in results:
+            buttons = r.boxes
+            if buttons is None or  len(buttons) == 0:
+                print("Skip Buttons not found")
+                break
+            
+            # Classes : draw_again = 0, skip = 1
+            for btn in buttons:
+                cls_btn = int(btn.cls[0])
+                #conf_btn = float(btn.conf[0])
+                #print(f"Detected class={cls_btn}, conf={conf_btn:.3f}")
+                if cls_btn == 1 :
+                    x1, y1, x2, y2 = map(int,btn.xyxy[0])
                     center["x"], center["y"] =  (x1 + x2)//2,(y1+y2)//2
                     print(f"Skip button found at {center["x"], center["y"]}")
-                    pyautogui.click(center["x"],center["y"])        
-
+                    for _ in range(4):
+                        pyautogui.click(center["x"],center["y"])        
+                        time.sleep(0.2) 
     
     def verify_target_match(self,cropped_5star_img: np.ndarray, threshold:float = 0.6) -> bool:
         cropped_gray = cv2.cvtColor(cropped_5star_img, cv2.COLOR_BGR2GRAY)
@@ -144,7 +170,7 @@ class CharacterDetection():
                 
             if h_temp > h_crop or w_temp > w_crop:
                 print("Template picture is too big ")
-                return False
+                continue
             result = cv2.matchTemplate(cropped_gray, template_gray, cv2.TM_CCOEFF_NORMED)
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
@@ -152,7 +178,7 @@ class CharacterDetection():
                 print(f"Found With : {max_val*100:.2f}%")
                 return True
             else:
-                print(f"Not Found : {max_val*100:.2f}%")
+                print(f"Not Found Max confidense: {max_val*100:.2f}%")
         return False      
         
     def start_reroll(self):  
@@ -161,19 +187,19 @@ class CharacterDetection():
                 if self.script_active: 
                     condition_met: bool = False
                     # UI DETECT    
-                    self.ui_detecting("redraw")
+                    self.redraw_click()
                     time.sleep(DELAY_AFTER_CLICK)
                     pydirectinput.press('enter')            # type: ignore
                     time.sleep(DELAY_AFTER_CLICK)
-                    for _ in range(4): 
-                        self.ui_detecting("skip")
-                        time.sleep(0.2)
+                    self.skip_click()
+                    
                     time.sleep(DELAY_AFTER_PULL_SEQUENCE)
                     #---------
                     
-                    character_images:list[np.ndarray] | None = self.char_detecting()
-                    if character_images == None:
-                        time.sleep(0.5)
+                    character_images:list[np.ndarray]  = self.char_detecting()
+                    if len(character_images) == 0:
+                        print("Starting Skip detect")
+                        self.skip_click()
                         continue
                     
                     target_found: int = 0
